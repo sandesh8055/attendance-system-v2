@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SITA Attendance – Admin</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f6f8;
+  margin: 0;
+}
+
+/* HEADER */
+header {
+  background: #0b253a;
+  color: white;
+  padding: 15px 30px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* PAGE */
+.container {
+  padding: 20px 30px;
+}
+
+/* FILTER BAR */
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.filters input,
+.filters select,
+.filters button {
+  padding: 8px;
+  font-size: 14px;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: #2563eb;
+  color: white;
+  border-radius: 4px;
+}
+
+/* TABLE */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+th, td {
+  border-bottom: 1px solid #ddd;
+  padding: 10px;
+  text-align: center;
+  font-size: 14px;
+}
+
+th {
+  background: #f1f5f9;
+}
+
+/* GPS BADGE */
+.badge {
+  background: #fee2e2;
+  color: #b91c1c;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+</style>
+</head>
+
+<body>
+
+<header>Attendance Admin Dashboard</header>
+
+<div class="container">
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <input type="text" id="nameFilter" placeholder="Engineer Name">
+    <select id="shiftFilter">
+      <option value="">All Shifts</option>
+      <option value="Day">Day</option>
+      <option value="Night">Night</option>
+    </select>
+    <input type="date" id="fromDate">
+    <input type="date" id="toDate">
+    <button onclick="exportCSV()">⬇ Export to Excel</button>
+  </div>
+
+  <!-- TABLE -->
+  <table id="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Terminal</th>
+        <th>Shift</th>
+        <th>Date</th>
+        <th>Check-In Time</th>
+        <th>Check-Out Time</th>
+        <th>Check-In Location</th>
+        <th>Check-Out Location</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzat3ioIlcvRmJ-4LsUsN4xXkt8FZD9xNqKVFdoBHwp4o7BPNCM2EoIswAuLantidxtaA/exec";
+let allData = [];
+
+/* ================= HELPERS ================= */
+function formatDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  return d.toLocaleDateString("en-GB"); // dd/mm/yyyy
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  return d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+/* ================= LOAD DATA ================= */
+fetch(SCRIPT_URL)
+  .then(r => r.json())
+  .then(data => {
+    allData = data;
+    renderTable(data);
+  })
+  .catch(err => {
+    alert("Failed to load attendance data");
+    console.error(err);
+  });
+
+/* ================= RENDER ================= */
+function renderTable(data) {
+  const tbody = document.querySelector("#table tbody");
+  tbody.innerHTML = "";
+
+  data.forEach(r => {
+    const checkInTime = r["Check In Time"];
+    const checkOutTime = r["Check Out Time"];
+    const checkInGPS = r["Check In GPS"];
+    const checkOutGPS = r["Check Out GPS"];
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.Name || ""}</td>
+      <td>${r.Terminal || ""}</td>
+      <td>${r.Shift || ""}</td>
+      <td>${formatDate(r.Date)}</td>
+
+      <td>${checkInTime ? formatTime(checkInTime) : "-"}</td>
+      <td>${checkOutTime ? formatTime(checkOutTime) : "-"}</td>
+
+      <td>
+        ${checkInGPS
+          ? `<span class="badge">GPS Captured</span><br>
+             <a href="https://maps.google.com/?q=${checkInGPS}" target="_blank">Map</a>`
+          : "-"}
+      </td>
+
+      <td>
+        ${checkOutGPS
+          ? `<span class="badge">GPS Captured</span><br>
+             <a href="https://maps.google.com/?q=${checkOutGPS}" target="_blank">Map</a>`
+          : "-"}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ================= FILTERS ================= */
+document.querySelectorAll("#nameFilter,#shiftFilter,#fromDate,#toDate")
+  .forEach(el => el.addEventListener("input", applyFilters));
+
+function applyFilters() {
+  const name = nameFilter.value.toLowerCase();
+  const shift = shiftFilter.value;
+  const from = fromDate.value;
+  const to = toDate.value;
+
+  const filtered = allData.filter(r => {
+    const dateStr = formatDate(r.Date).split("/").reverse().join("-");
+
+    if (name && !r.Name.toLowerCase().includes(name)) return false;
+    if (shift && r.Shift !== shift) return false;
+    if (from && dateStr < from) return false;
+    if (to && dateStr > to) return false;
+
+    return true;
+  });
+
+  renderTable(filtered);
+}
+
+/* ================= EXPORT ================= */
+function exportCSV() {
+  let csv = "Name,Terminal,Shift,Date,CheckInTime,CheckOutTime,CheckInGPS,CheckOutGPS\n";
+
+  allData.forEach(r => {
+    csv += `"${r.Name}","${r.Terminal}","${r.Shift}","${formatDate(r.Date)}","${formatTime(r["Check In Time"])}","${formatTime(r["Check Out Time"])}","${r["Check In GPS"] || ""}","${r["Check Out GPS"] || ""}"\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "attendance.csv";
+  a.click();
+}
+</script>
+
+</body>
+</html>
